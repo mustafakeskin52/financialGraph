@@ -2,11 +2,12 @@ import numpy as np
 import pandas as pd
 import glob
 
-lastDaysAmount = 1000
+lastDaysAmount = 30
 
-def toCorrCoef(x,y,lastDaysAmount):
-    coef = np.corrcoef(x[len(x) - lastDaysAmount:len(x) + 1], y[len(y) - lastDaysAmount:len(y) + 1])
-    mean = np.mean(x[len(x) - lastDaysAmount:len(x) + 1])#to calculate mean of X array
+def toCorrCoef(x,y,lastDaysAmount,xlastBoundary,ylastBoundary):
+
+    coef = np.corrcoef(x[xlastBoundary - lastDaysAmount:xlastBoundary], y[ylastBoundary - lastDaysAmount:ylastBoundary])
+    mean = np.mean(x[xlastBoundary - lastDaysAmount:xlastBoundary])#to calculate mean of X array
     return coef[1,0],mean
 def centralityOfPoint(v,adjmatrix):
     sum = 0
@@ -49,26 +50,33 @@ def correToGraphLength(cx,mean):
     else :
         return 1/(cx)
 
-def calcAdjCorrMatrix(x):
-    correlationMatrix = np.zeros((len(fileValue), len(fileValue)))
-    adjustmentMatrix = np.zeros((len(fileValue), len(fileValue)))
-    for i in range(len(x)):
-        for j in range(i+1):
-            corrEf,mean = toCorrCoef(x[i],x[j], lastDaysAmount)
-            distGraph = correToGraphLength(corrEf,mean)
-            if i == j:
-                adjustmentMatrix[i][j] = distGraph
-                correlationMatrix[i][j] = corrEf
-            else:
-                adjustmentMatrix[i][j] = distGraph
-                adjustmentMatrix[j][i] = distGraph
-                correlationMatrix[i][j] = corrEf
-                correlationMatrix[j][i] = corrEf
-    return correlationMatrix,adjustmentMatrix
-
-fileName,fileValue = readAllFile('stock\*.csv')
-correlationMatrix,adjustmentMatrix = calcAdjCorrMatrix(fileValue)
+def calcAdjCorrMatrix(x,maxshifting,maxshiftingAmount):
+    timeSeriesList = []
+    #the first parameter of timeSeriesList is given by input to indicate time that outside want to receive.
+    #the second parameter of timeSeriesList is given by input to show shifting corelation matrix
+    #If maxshiftingAmount is zero,the list won't return second dimension array
+    for t in range(0,maxshifting,1):
+        timeSeriesList.append([])
+        for shiftingAmount in range(0,maxshiftingAmount,1):
+            timeSeriesList[t].append([])
+            correlationMatrix = np.zeros((len(fileValue), len(fileValue)))
+            adjustmentMatrix = np.zeros((len(fileValue), len(fileValue)))
+            for i in range(len(x)):
+                for j in range(len(x)):
+                    lastXBoundary = len(x[i])-t - shiftingAmount
+                    lastYBoundary = len(x[j])-t
+                    corrEf,mean = toCorrCoef(x[i],x[j], lastDaysAmount,lastXBoundary,lastYBoundary)
+                    distGraph = correToGraphLength(corrEf,mean)
+                    adjustmentMatrix[i][j] = distGraph
+                    correlationMatrix[i][j] = corrEf
+            timeSeriesList[t][shiftingAmount].append(correlationMatrix)
+    return timeSeriesList
+fileName,fileValue = readAllFile('dow30\*.csv')
+#correlationMatrix,adjustmentMatrix = calcAdjCorrMatrix(fileValue)
+#a = timeseriesCorrMatrix(fileValue,1000)
+a = calcAdjCorrMatrix(fileValue,100,2)
+print(a[0])
 #x = np.array([[1,3,1,0],[3,1,2,5],[1,2,1,2],[0,5,2,1]])
-print(__calcCentralityVect(adjustmentMatrix,True))
-print(adjustmentMatrix)
+#print(__calcCentralityVect(adjustmentMatrix,True))
+#print(adjustmentMatrix)
 #print(correlationMatrix)
