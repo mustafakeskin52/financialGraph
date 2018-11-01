@@ -15,7 +15,7 @@ def toCorrCoef(x,y,lastDaysAmount,xlastBoundary,ylastBoundary,coefType):
     if coefType == "Standart":
         coef = np.corrcoef(x[xlastBoundary - lastDaysAmount:xlastBoundary], y[ylastBoundary - lastDaysAmount:ylastBoundary])
         coef = coef[1,0]
-    elif coefType == "Spearmanm":
+    elif coefType == "Spearman":
         coef = spearmanr(x[xlastBoundary - lastDaysAmount:xlastBoundary],
                          y[ylastBoundary - lastDaysAmount:ylastBoundary])[0]
     mean = np.mean(x[xlastBoundary - lastDaysAmount:xlastBoundary])  # to calculate mean of X array
@@ -61,7 +61,16 @@ def correToGraphLength(cx,mean):
         return 1/(cx)
     else :
         return 1/(cx)
-
+"""
+If you want to entry input to this method,you will careful about the timeseries shape.
+Timeseries is a matrix that constantly have shifted in the time axis as soon as its coefficent function is calculating instantly 
+Therefore this method allow to entry a function that has shape as a (t,n,n) 
+"""
+def sumRowOfTimeSeries(timeSeries):
+    returnTimeSeries = []
+    for i in range(len(timeSeries)):
+        returnTimeSeries.append(np.sum(np.abs(timeSeries[i]), axis=1))
+    return np.asarray(returnTimeSeries)
 """
    the first parameter of timeSeriesList is given by input to indicate time that outside want to receive.
    the second parameter of timeSeriesList is given by input to show shifting corelation matrix
@@ -79,7 +88,7 @@ def calcAdjCorrMatrix(x,maxshifting,maxshiftingAmount,coefType):
                 for j in range(len(x)):
                     lastXBoundary = len(x[i])-t - shiftingAmount
                     lastYBoundary = len(x[j])-t
-                    corrEf,mean = toCorrCoef(x[i],x[j], lastDaysAmount,lastXBoundary,lastYBoundary,coefType)
+                    corrEf,mean = toCorrCoef(x[i],x[j],lastDaysAmount,lastXBoundary,lastYBoundary,coefType)
                     correlationMatrix[i][j] = corrEf
             timeSeriesList[t][shiftingAmount].append(correlationMatrix)
     return timeSeriesList
@@ -95,14 +104,30 @@ For example:
 """""
 def maxCorrPeriodic(matrix):
     result = []
+    resultIndex = []
     for i in range(matrix.shape[0]):
+
         temp = np.zeros((matrix.shape[2], matrix.shape[3]))
+        tempIndex = np.zeros((matrix.shape[2], matrix.shape[3]))
         tempMax = np.zeros((matrix.shape[2], matrix.shape[3]))
         tempMin = np.zeros((matrix.shape[2],matrix.shape[3]))
+        tempMaxIndex = np.zeros((matrix.shape[2], matrix.shape[3]))
+        tempMinIndex = np.zeros((matrix.shape[2], matrix.shape[3]))
+
         for j in range(matrix.shape[1]):
             tempMax = np.maximum(tempMax,matrix[i][j])
+            tempChangeTableForMax = np.equal(tempMax,matrix[i][j])
             tempMin = np.minimum(tempMin,matrix[i][j])
-        """"
+            tempChangeTableForMin = np.equal(tempMin,matrix[i][j])
+
+            #To update max and min index of matrix constantly depended on the state
+            for k in range(matrix.shape[2]):
+                for l in range(matrix.shape[3]):
+                    if tempChangeTableForMax[k][l] == False:
+                        tempMaxIndex[k][l] = j
+                    if tempChangeTableForMin[k][l] == False:
+                        tempMinIndex[k][l] = j
+        """
         This block calculate which of the value bigger than other
         By the time code is coming this block,calculated a max and min corelation matrix.After that, this code return once unique matrix 
         """
@@ -110,49 +135,47 @@ def maxCorrPeriodic(matrix):
             for j in range(0,matrix.shape[3]):
                 if np.abs(tempMax[i][j]) >= np.abs(tempMin[i][j]):
                     temp[i][j] = tempMax[i][j]
+                    tempIndex[i][j] = tempMaxIndex[i][j]
                 else:
                     temp[i][j] = tempMin[i][j]
-        result.append(temp)
-    return np.asarray(result)
+                    tempIndex[i][j] = tempMinIndex[i][j]
 
+        result.append(temp)
+        resultIndex.append(tempIndex)
+    return np.asarray(result),np.asarray(resultIndex)
+def thresholdToGraph(corr,thresholdValue):
+    corr[np.abs(corr) <=thresholdValue] = 0
 processTypeLoad = True
 
-outfile = "saveFiles90Periods.npy"
+outfile = "saveDirectedFilesSpearman90Periods.npy"
 
 if processTypeLoad == False:
     fileName,fileValue = readAllFile('dow30\*.csv')
-    #correlationMatrix,adjustmentMatrix = calcAdjCorrMatrix(fileValue)
     a = calcAdjCorrMatrix(fileValue,540,1,"Standart")
     a = np.asarray(a).squeeze(axis=2)
     np.save(outfile,a)
-    #rs = maxCorrPeriodic(a)
-
-    # plt.imshow(pixelCorr[0][0], cmap='gray',norm=Normalize(vmin=0,vmax=255))
-    # plt.show()
 else:
-    import math
     fileName, fileValue = readAllFile('dow30\*.csv')
     corr = np.load(outfile)
+    corr,index = maxCorrPeriodic(corr)#For directedGraph Operation
+    thresholdToGraph(corr,0.6)
+    print(corr[0])
     pixelCorr = ((corr + 1) / 2) * 255
-    print(len(fileValue))
-    print(len(fileValue[0]))
-    for i in range(0,240,30):
-        a = []
-        c = []
-        # for k in range(30):
-        #     b = fileValue[k][i*30:(i+1)*30]
-        #     a.append(sum(b)/30.0)
-        #     c.append(sum(abs(corr[i][0][k]))/30.0)
-        # a = np.round(a, 2)
-        # print(a[[14,17,21,24]])
+    sumtimeSeries = sumRowOfTimeSeries(corr)
+    pixelCorr = np.expand_dims(pixelCorr, axis=1)
+    sumTotal = 0
+    for i in range(0,120,10):
+        if i>0:
+            sum = 0
+            for j in range(30):
+                sum += abs(sumtimeSeries[i][j] - sumtimeSeries[i - 1][j])
+            print("%d %d days: %f" % (i, i - 1, sum))
+            sumTotal += sum
+
         plt.figure()
         name = "Figure " + str(i)
         title_obj = plt.title(name)
         plt.setp(title_obj, color='r')
         plt.imshow(pixelCorr[i][0], cmap='gray', norm=Normalize(vmin=0, vmax=255))
-    #print(a)
+    print(sumTotal/19.0)
 plt.show()
-#x = np.array([[1,3,1,0],[3,1,2,5],[1,2,1,2],[0,5,2,1]])
-#print(__calcCentralityVect(adjustmentMatrix,True))
-#print(adjustmentMatrix)
-#print(correlationMatrix)
